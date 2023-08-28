@@ -134,6 +134,8 @@ for(year in 1996) {
   input_df <- input_df[, c('municipality_code', 'establishment')]
   test <- input_df[100000:110000,]
   
+  rm(input_df)
+  
   ccc1 <- ccc[, .(unique_estabs = uniqueN(establishment)), by = cnpj_cei]
   
   ccc2 <- ccc1[unique_estabs > 1,]
