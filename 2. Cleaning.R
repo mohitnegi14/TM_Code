@@ -32,7 +32,7 @@ years_list <- c(1985, 1986, 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995
 
 # for(year in years_list[start_from:installed_till]) {
 
-for(year in 1995) {
+for(year in 1996) {
     
   # # First read them in one year at a time because of space and memory constraints.
   input_df <- read_dta(glue('{raw}/allstates_blind_{year}.dta'))
