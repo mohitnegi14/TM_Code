@@ -26,124 +26,244 @@ options(scipen = 999)
 
 ##################
 years_list <- c(1985, 1986, 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995)
-# 
-# start_from <- 2
-# installed_till <- 3
 
 # for(year in years_list[start_from:installed_till]) {
 
-for(year in 1996) {
-    
-  # # First read them in one year at a time because of space and memory constraints.
-  input_df <- read_dta(glue('{raw}/allstates_blind_{year}.dta'))
-  # 
-  # # See a small sample to ensure everything is OK.
-  test <- sample_n(input_df, 100)
-  # 
-  # # First save it as a csv file for faster read/write.
-  fwrite(input_df, file = glue('{raw}/allstates_blind_{year}.csv'))
+for(year in 2000) {
   
-  number_of_columns <- ncol(input_df)
+  # Just read in the first column to get the number of rows.
+  input_df <- read_dta(glue('{raw}/allstates_blind_{year}.dta'),
+                       col_select = 1)
+   
+  number_of_rows <- nrow(input_df)
   
-  # Now remove as unneeded.
   rm(input_df)
+  gc()
   
-  # Now load it in to work on it. 35 for 1985, 34 for 1990.
-  input_df <- fread(glue('{raw}/allstates_blind_{year}.csv'),
-                    colClasses = c(rep('character', number_of_columns)))
+  # Divide up the rows in smaller batches (of a million each) for reading with limited RAM.
+  batches <- seq(0, number_of_rows, by = 1000000)
   
-  # # See a small sample to ensure everything is OK.
-  test <- sample_n(input_df, 100)
+  ##############################################################################
+  for(i in 1:2) {
+  #for(i in 1:(length(batches)-1)) {
+    
+    input_df <- read_dta(glue('{raw}/allstates_blind_{year}.dta'),
+                         n_max = 1000000,
+                         skip = batches[i])
+    
+    if(i == 1) {
+      
+      fwrite(input_df, file = glue('{raw}/allstates_blind_{year}.csv'),
+             append = FALSE)
+      
+    } else {
+      
+      fwrite(input_df, file = glue('{raw}/allstates_blind_{year}.csv'),
+             append = TRUE)
+    
+    }
+    
+    rm(input_df)
+    
+  }
+  ##############################################################################
   
-  ## 1.
-  # Defining employer as first 8 digits of cnpj_cei.
-  input_df[, employer := str_sub(cnpj_cei, 1, 8)]
+  gc()
   
-  ## 2. 
-  # Defining an establishment.
-  input_df[, establishment := fcase(
-    municipality_code %in% c('', '.'), paste(cnpj_cei, municipio, sep = '_'), 
-    !(municipality_code %in% c('', '.')), paste(cnpj_cei, municipality_code, sep = '_'))]
+  ##############################################################################
+  # Load just the columns to determine first.
+  names_of_columns <- fread(glue('{raw}/allstates_blind_{year}.csv'),
+                            nrows = 0) %>% colnames()
   
-  # Save it.
-  fwrite(input_df, file = glue('{data_output_folder}/allstates_blind_{year}_newvars.csv'))
+  # Track number of columns too.
+  number_of_columns <- length(names_of_columns)
+  ##############################################################################
   
-  # Now only need a smaller set of columns.
-  input_df <- input_df[, c('cnpj_cei',
-                           'establishment',
-                           'anoadmissao', 
-                           'mesadmissao', 
-                           'mesdesligamento',
-                           'pis_encoded')] 
   
-  ## 3.
-  # Redundancy table : bit unclear on what "annual counts" means, 
-  # is the year admission year or 1985 (i.e. only one year in this test case.)
+  
+  ##############################################################################
+  for(i in 1:2) {
+  # for(i in 1:(length(batches)-1)) {
+    
+    # Now load it in to work on it.
+    input_df <- fread(glue('{raw}/allstates_blind_{year}.csv'),
+                      colClasses = c(rep('character', number_of_columns)),
+                      nrows = 1000000,
+                      skip = batches[i])
+    
+    colnames(input_df) <- names_of_columns
+    
+    ## 1.
+    # Defining employer as first 8 digits of cnpj_cei.
+    input_df[, employer := str_sub(cnpj_cei, 1, 8)]
+    
+    ## 2. 
+    # Defining an establishment.
+    input_df[, establishment := fcase(
+      municipality_code %in% c('', '.'), paste(cnpj_cei, municipio, sep = '_'), 
+      !(municipality_code %in% c('', '.')), paste(cnpj_cei, municipality_code, sep = '_'))]
+    
+    # For the next tasks, only some columns needed.
+    relevant_columns <- c('cnpj_cei',
+                          'establishment',
+                          'anoadmissao', 
+                          'mesadmissao', 
+                          'mesdesligamento',
+                          'municipality_code',
+                          'pis_encoded')
+    
+    input_df2 <- input_df[, relevant_columns]
+    
+    ## 3. Workplace dataframe separately.
+    # First remove the default pis code.
+    input_df2 <- input_df2[pis_encoded != '000000000001',]
+    
+    # Convert the months back to numeric.
+    input_df2[, `:=`(mesadmissao = as.numeric(mesadmissao),
+                    mesdesligamento = as.numeric(mesdesligamento))]
+    
+    for(refmonth in 1:12) {
+      
+      print(glue('Working on month {refmonth} of 12'))
+      
+      new_df <- input_df2
+      new_df[, month := refmonth*as.numeric(mesadmissao <= refmonth & (mesdesligamento >= refmonth | mesdesligamento == 0))]
+      new_df <- new_df[month == refmonth]
+      new_df[, workplace := paste(establishment, glue('{year}'), month, sep = '_')]
+      
+      new_df <- new_df[, c('workplace', 'pis_encoded')]
+      
+      if(i == 1) {
+        
+        fwrite(new_df, file = glue('{data_output_folder}/workplacedata_month{refmonth}_{year}.csv'),
+               append = FALSE)
+        
+      } else {
+        
+        fwrite(new_df, file = glue('{data_output_folder}/workplacedata_month{refmonth}_{year}.csv'),
+               append = TRUE)
+        
+      }
+      
+      rm(new_df)
+      
+    }
+    
+    rm(input_df2)
+    gc()  
+      
+    if(i == 1) {
+      
+      fwrite(input_df, file = glue('{data_output_folder}/allstates_blind_{year}_newvars.csv'),
+             append = FALSE)
+      
+    } else {
+      
+      fwrite(input_df, file = glue('{data_output_folder}/allstates_blind_{year}_newvars.csv'),
+             append = TRUE)
+      
+    }
+    
+    rm(input_df)
+    gc()
+    
+    # Check if everything was good.
+    workplace_df <- fread(glue('{data_output_folder}/workplacedata_month1_{year}.csv'),
+                          colClasses = c(rep('character', 2)),
+                          nrows = 1000)
+    
+    workplace_df
+    # Now remove as unneeded.
+    rm(workplace_df)
+      
+    }
+  ##############################################################################     
+
+
+  
+  ##############################################################################  
+  # Again, do the next steps in batches too.
+  for(i in 1:2) {
+    # for(i in 1:(length(batches))) {
+    
+
+    
+    # # Now load it in to work on it. Only need some columns now.
+    # input_df <- fread(glue('{raw}/allstates_blind_{year}_newvars.csv'),
+    #                   colClasses = c(rep('character', number_of_columns)),
+    #                   select = relevant_columns,
+    #                   nrows = 1000000,
+    #                   skip = batches[i])
+    
+    # colnames(input_df) <- relevant_columns
+    
+    
+      
+  
+  gc()
+  
+  ## 4.
+  # Redundancy table
+  input_df <- fread(glue('{data_output_folder}/allstates_blind_{year}_newvars.csv'),
+                    colClasses = c(rep('character', (number_of_columns + 2))),
+                    select = c('cnpj_cei', 'establishment', 'municipality'))
+  
   redundancy_table <- input_df[, .(unique_cnpj_cei = uniqueN(cnpj_cei, na.rm = T),
                                    unique_establishments = uniqueN(establishment, na.rm = T))]
-  
+
   # Add the year label.
   redundancy_table[, year := glue('{year}')]
-  
+
   colnames(redundancy_table) <- c('Unique cnpj_cei', 'Unique Establishments', 'Year')
-  
+
   # Save to join later.
   fwrite(redundancy_table, file = glue('{cleaned}/redundancy_table_{year}.csv'))
   
-  ## 4. Workplace dataframe separately.
-  # First remove the default pis code.
-  input_df <- input_df[pis_encoded != '000000000001',]
-  
-  # Convert the months back to numeric.
-  input_df[, `:=`(mesadmissao = as.numeric(mesadmissao),
-                  mesdesligamento = as.numeric(mesdesligamento))]
-  
-  for(refmonth in 1:12) {
-    
-    print(glue('Working on month {refmonth} of 12'))
-    
-    new_df <- input_df
-    new_df[, month := refmonth*as.numeric(mesadmissao <= refmonth & (mesdesligamento >= refmonth | mesdesligamento == 0))]
-    new_df <- new_df[month == refmonth]
-    new_df[, workplace := paste(establishment, glue('{year}'), month, sep = '_')]
-    
-    new_df <- new_df[, c('workplace', 'pis_encoded')]
-    
-    fwrite(new_df, file = glue('{data_output_folder}/workplacedata_month{refmonth}_{year}.csv'))
-    
-    rm(new_df)
-    
-  }
-  
-  rm(input_df)
-  
-  workplace_df <- fread(glue('{data_output_folder}/workplacedata_month1_{year}.csv'),
-                        colClasses = c(rep('character', 2)))
-  
-  workplace_df[1000:1100,] # Looks good!
-  
-  rm(workplace_df)
-  
   # 5. Investigate extra establishments.
-  input_df <- fread(glue('{data_output_folder}/allstates_blind_{year}_newvars.csv'),
-                    colClasses = c(rep('character', (number_of_columns + 2))))
   
   # First check if missing municipality_code imputed correctly for the establishment variable.
-  ccc <- input_df
+  test_impute <- sample_n(input_df, 10000)
   
-  input_df <- input_df[, c('municipality_code', 'establishment')]
-  test <- input_df[100000:110000,]
+  # Now find the problematic cnpj_cei IDs.
+  estabs_per_cnpj <- input_df[, .(unique_estabs = uniqueN(establishment, na.rm = TRUE)), by = cnpj_cei]
+  estabs_per_cnpj <- estabs_per_cnpj[unique_estabs > 1,]
   
+  # Save it.
+  fwrite(estabs_per_cnpj, file = glue('{data_output_folder}/repeatnumber_by_cnpj_{year}.csv'), quote = T)
+  
+  # Remove as no longer needed.
   rm(input_df)
   
-  ccc1 <- ccc[, .(unique_estabs = uniqueN(establishment)), by = cnpj_cei]
+  # Load just the columns to determine first.
+  names_of_columns <- fread(glue('{raw}/allstates_blind_{year}.csv'),
+                            nrows = 0) %>% colnames()
   
-  ccc2 <- ccc1[unique_estabs > 1,]
+  # Track number of columns too.
+  number_of_columns <- length(names_of_columns)
   
-  ccc <- ccc[cnpj_cei %in% ccc2$cnpj_cei]
+  for(i in 1:2) {
+    #for(i in 1:(length(batches)-1)) {
+    # Now keep only the ones corresponding to cnpj that have multiple establishments.
+    input_df <- input_df[cnpj_cei %in% estabs_per_cnpj$cnpj_cei]
+    
+    if(i == 1) {
+      
+      fwrite(repeated_df, file = glue('{data_output_folder}/repeated_cnpj_{year}.csv'), quote = T,
+             append = FALSE)
+      
+    } else {
+      
+      fwrite(repeated_df, file = glue('{data_output_folder}/repeated_cnpj_{year}.csv'), quote = T,
+             append = TRUE)
+      
+    }
+    
+    rm(input_df)
+    
+  }
+    
   
-  fwrite(ccc2, file = glue('{data_output_folder}/repeatnumber_by_cnpj_{year}.csv'), quote = T)
-  fwrite(ccc, file = glue('{data_output_folder}/repeated_cnpj_{year}.csv'), quote = T)
+  gc()
   
 }
 
