@@ -40,8 +40,15 @@ options(scipen = 999)
 
 ##################
 ##################
-year_list <- c(1985,1986,1987,1988,1989,1990,1991,1992,1993,1994,1995,1996,1997,1998,2000,
-               2001,2002,2003,2004,2005,2006,2007)
+years_list <- 1985:2017
+super_large_files <- c(1999, 2008:2017)
+
+#
+# The super large years are those whose RAIS files are larger than 20GB. 
+# I was not able to run these due to lack of RAM and storage space on my computer.
+#
+
+years_list <- setdiff(years_list, super_large_files)
 ##################
 ##################
 
@@ -54,7 +61,7 @@ year <- 1985
 ###########
 # Just read in the first column to get the number of rows.
 df1_numberofrows <- fread(glue('{raw}/allstates_blind_{year}_newvars.csv'),
-                          select = 'anoadmissao')
+                          select = 'anoadmissao') # Change to dtadmissao(anoadmissao) for years 2002+(1985-2001).
 
 number_of_rows <- nrow(df1_numberofrows)
 
@@ -101,6 +108,11 @@ for(i in 1:length(batches)) {
   
   # Add the column names.
   colnames(input_df) <- names_of_columns
+  
+  # Rename certain columns for consistency with previous ones.
+  colnames(input_df)[which(colnames(input_df) == 'tpvincl')] <- 'tipovinculo'
+  colnames(input_df)[which(colnames(input_df) == 'tpvinculo')] <- 'tipovinculo'
+  colnames(input_df)[which(colnames(input_df) == 'mesdeslig')] <- 'mesdesligamento'
   
   ####################################################################
   ####################################################################
