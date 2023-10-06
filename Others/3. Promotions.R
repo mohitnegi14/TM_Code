@@ -1,6 +1,6 @@
 ################## 
 # MOHIT NEGI
-# Last Updated : 18 September 2023
+# Last Updated : 7 September 2023
 # Contact on : mohit.negi@studbocconi.it
 ################## 
 
@@ -15,40 +15,27 @@
 ##################
 
 ################## PATHS
-raw <- 'C:/Users/mohit/Desktop/EP/TM/TM_Data/Raw'
-cleaned <- 'C:/Users/mohit/Desktop/EP/TM/TM_Data/Cleaned'
-output <- 'C:/Users/mohit/Desktop/EP/TM/TM_Data/Output'
+global <- '' # This can be filled by the user of this code according to their own needs.
+raw <- glue('{global}/Box/mohit_ra/intermediate/datasets_with_new_vars')
+output <- glue('{global}/Box/mohit_ra/intermediate')
 ##################
 
-################## PACKAGES
-# We will use these in this script.
-packages <- c('tidyverse',
-              'data.table',
-              'haven',
-              'glue',
-              'stringr',
-              'stringi',
-              'kableExtra',
-              'beepr')
-
-# Installs them if not yet installed.
-installed_packages <- packages %in% rownames(installed.packages())
-if(any(installed_packages == FALSE)) { install.packages(packages[!installed_packages]) }
-
-# And load them in.
-invisible(lapply(packages, library, character.only = T))
-
-# Disable scientific notation.
+################## LIBRARIES
+library(tidyverse)
+library(data.table)
+library(haven)
+library(glue)
+library(stringr)
+library(stringi)
+library(kableExtra)
 options(scipen = 999)
-
-rm(packages, installed_packages)
 ##################
 
 
 ##############################################################################
 ###########
 ########### Change year from 1985 to 1995 one by one.
-year <- 1994  
+year <- 1985  
 ###########
 ###########
 # Just read in the first column to get the number of rows.
@@ -85,33 +72,31 @@ batches[1] <- 1
 ##############################################################################
 # Add the cbo to isco converter to code jobs as blue collar,
 # white collar and managerial.
-# cbo_crosswalk <- fread(glue('{raw}/cbo-isco-conc.csv'))
-# cbo_crosswalk[, digit_1 := str_sub(iscoid, 1, 1)]
-# cbo_crosswalk[, job_level := fcase(digit_1 %in% '1', 'managerial',
-#                                    digit_1 %in% c('2', '3', '4', '5'), 'white-collar',
-#                                    digit_1 %in% c('6', '7', '8', '9'), 'blue-collar')]
-# cbo_crosswalk <- cbo_crosswalk[, .(cboid, job_level)]
-# cbo_crosswalk[, cboid := str_replace_all(cboid, pattern = '\\-', '')][, cboid := str_replace_all(cboid, pattern = '\\.', '')]
-# 
-# cbo_94_to_2002 <- read_dta(glue('{raw}/crosswalk_cbo94_2002.dta')) %>% 
-#   select('cbo2002', 'cbo94')
-# 
-# # Create a crosswalk between cbo94, 2002 and isco88.
-# occupation_crosswalk <- merge.data.table(cbo_crosswalk,
-#                                          cbo_94_to_2002,
-#                                          by.x = 'cboid',
-#                                          by.y = 'cbo94',
-#                                          all = T)
+cbo_crosswalk <- fread(glue('{raw}/cbo-isco-conc.csv'))
+cbo_crosswalk[, digit_1 := str_sub(iscoid, 1, 1)]
+cbo_crosswalk[, job_level := fcase(digit_1 %in% '1', 'managerial',
+                                   digit_1 %in% c('2', '3', '4', '5'), 'white-collar',
+                                   digit_1 %in% c('6', '7', '8', '9'), 'blue-collar')]
+cbo_crosswalk <- cbo_crosswalk[, .(cboid, job_level)]
+cbo_crosswalk[, cboid := str_replace_all(cboid, pattern = '\\-', '')][, cboid := str_replace_all(cboid, pattern = '\\.', '')]
 
-# Save it. Only once run it, then comment everything out.
-# fwrite(occupation_crosswalk, file = glue('{cleaned}/occupation_codes_crosswalk.csv'))
+cbo_94_to_2002 <- read_dta(glue('{raw}/crosswalk_cbo94_2002.dta')) %>% 
+  select('cbo2002', 'cbo94')
+
+# Create a crosswalk between cbo94, 2002 and isco88.
+occupation_crosswalk <- merge.data.table(cbo_crosswalk,
+                                         cbo_94_to_2002,
+                                         by.x = 'cboid',
+                                         by.y = 'cbo94',
+                                         all = T)
+
+# Save it.
+# fwrite(occupation_crosswalk, file = glue('{output}/output/tabs/occupation_codes_crosswalk.csv'))
 ##############################################################################
 
 
 ##############################################################################
 for(i in 1:length(batches)) {
-  
-  print(glue('We are working on the year {year} and on part {i} of {length(batches)}'))
 
   # Now load it in to work on it.
   input_df <- fread(glue('{raw}/allstates_blind_{year}_newvars.csv'),
@@ -132,21 +117,8 @@ for(i in 1:length(batches)) {
   # Sort by jobs.
   setorder(input_df, job)
   
-  # For the years 1985-93, concursado was tipovinculo == '02' not
-  # tipovinculo == '30' or '31'. Make this correction.
-  if(year %in% 1985:1993) {
-    
-    input_df[, concursado := as.numeric(tipovinculo == '02')]
-    
-  }
-  
-  if(year %in% c(1994)) {
-    
-    input_df <- input_df[concursado == 1 & firm_type == 'public_sector',]
-    
-  } else { input_df <- input_df[concursado == 1 & firm_type == 'public sector',] }
-  
-  # Keep only concursado workers and public sector jobs
+  # Keep only concursado workers and public sector jobs.
+  input_df[concursado == 1 & firm_type == 'public sector']
   
   # Keep only relevant columns : job, year, code for multiple active jobs and
   # average wage over the year.
@@ -155,7 +127,6 @@ for(i in 1:length(batches)) {
                         'education',
                         'multiple_entries',
                         'multiple_active',
-                        'cbo94',
                         'cbo2002',
                         'vlremunmediasm',
                         'anoadmissao',
@@ -186,10 +157,11 @@ for(i in 1:length(batches)) {
   # First way to define promotions is by classifying jobs (using the crosswalk)
   # as blue-collar, white-collar and managerial. Promotion is going from BC to WC
   # and from WC to managerial.
-  
-  # Add isco88-based labels by matching on cbo94 codes of the professions.
-  occupation_crosswalk <- fread(glue('{cleaned}/occupation_codes_crosswalk.csv'))
-  input_df <- occupation_crosswalk[, cbo2002 := NULL][input_df, on = .(cboid == cbo94)]
+  input_df <- merge.data.table(input_df, occupation_crosswalk,
+                               by.x = 'cbo2002',
+                               by.y = 'cbo2002',
+                               all.x = T,
+                               all.y = F)
   
   # The strategy is as follows :
   # 1. Save (in a loop by appending) the dataset we have till now for all the years
@@ -204,13 +176,12 @@ for(i in 1:length(batches)) {
     
   } else {
     
-    fwrite(input_df, file = glue('{output}/promotions_{year}.csv'),
+    fwrite(input_df, file = glue('{output}/promotions_by_year/promotions_{year}.csv'),
            append = TRUE)
     
   }
   
 } # For loop ends here, all batches for 1985, then 1986, so on.... done one by one.
-beep() # For notification of loop end.  
 ##############################################################################
 
 
@@ -223,20 +194,18 @@ if(year == 1995){
 list <- list()
 years_list <- 1985:1995
 
-for(j in 3:length(years_list)) {
+for(j in 1:length(years_list)) {
   
   year2 <- years_list[j]
-  df <- fread(glue('{output}/promotions_{year2}.csv'),
-              colClasses = c(rep('character', 19), 'numeric'))
+  df <- fread(glue('{output}/promotions_by_year/promotions_{year2}.csv'),
+              colClasses = c(rep('character', 13)))
   
   list[[j]] <- df
-  
-  rm(df)
   
 }
 
 input_df <- bind_rows(list)
-rm(list)
+
 # All the operations below will only be run after 1995 done since we're still
 # in the if statement!  
 
@@ -264,7 +233,6 @@ df2 <- copy(input_df)
 df2 <- df2[promoted == 1, .(group_index, next_promotion = group_index, job)]
 input_df <- df2[df1, on = .(job, group_index), roll = -Inf]
 input_df[, group_index := group_index - 1]
-rm(df1, df2)
 
 # Next demotion when?
 df1 <- copy(input_df)
@@ -273,7 +241,6 @@ df2 <- copy(input_df)
 df2 <- df2[promoted == -1, .(group_index, next_demotion = group_index, job)]
 input_df <- df2[df1, on = .(job, group_index), roll = -Inf]
 input_df[, group_index := group_index - 1]
-rm(df1, df2)
 
 # Next promotion before demotion?
 input_df[, prom_pre_dem := as.numeric(next_promotion < next_demotion)]
@@ -286,8 +253,7 @@ input_df[, sustained_prom := as.numeric(promoted == 1 & prom_pre_dem == 1)]
 setnafill(input_df, cols = 'sustained_prom', fill = 0)
 
 # Now record the year of promotion.
-input_df[, promotion_year := fcase(sustained_prom == 1, year,
-                                   sustained_prom == 0, '')]
+input_df[, promotion_year := as.numeric(year)*sustained_prom]
 
 # Record if final termination happened, that is, the last record is
 # is a terminated record.
@@ -328,7 +294,6 @@ df2 <- copy(input_df)
 df2 <- df2[educ_upgrade == 1, .(group_index, next_educ_upgrade = group_index, job)]
 input_df <- df2[df1, on = .(job, group_index), roll = -Inf]
 input_df[, group_index := group_index - 1]
-rm(df1, df2)
 
 # Next degrade when?
 df1 <- copy(input_df)
@@ -337,7 +302,6 @@ df2 <- copy(input_df)
 df2 <- df2[educ_upgrade == -1, .(group_index, next_educ_degrade = group_index, job)]
 input_df <- df2[df1, on = .(job, group_index), roll = -Inf]
 input_df[, group_index := group_index - 1]
-rm(df1, df2)
 
 # Next upgrade before degrade?
 input_df[, upgrade_pre_degrade := as.numeric(next_educ_upgrade < next_educ_degrade)]
@@ -350,15 +314,13 @@ input_df[, sustained_upgrade := as.numeric(educ_upgrade == 1 & upgrade_pre_degra
 setnafill(input_df, cols = 'sustained_upgrade', fill = 0)
 
 # Now record the year of upgrade.
-input_df[, upgrade_year := fcase(sustained_upgrade == 1, year,
-                                 sustained_upgrade == 0, '')]
+input_df[, upgrade_year := as.numeric(year)*sustained_upgrade]
 
 # Reorder
 input_df <- input_df[, .(job,
                        year,
                        multiple_entries,
                        multiple_active,
-                       cboid,
                        cbo2002,
                        race,
                        gender,
@@ -379,9 +341,9 @@ input_df <- input_df[, .(job,
 
 # Now collapse.
 collapsed_df <- input_df[, .(ever_promoted = max(sustained_prom, na.rm = T),
-                           promotion_year = paste(unique(promotion_year[promotion_year != '']), collapse = ','),
+                           promotion_year = paste(unique(promotion_year), collapse = ','),
                            ever_upgrade = max(sustained_upgrade, na.rm = T),
-                           upgrade_year = paste(unique(upgrade_year[upgrade_year != '']), collapse = ','),
+                           upgrade_year = paste(unique(upgrade_year), collapse = ','),
                            date_emp = first(date_emp),
                            date_sep = last(date_sep),
                            terminated = max(terminated, na.rm = T),
@@ -401,13 +363,12 @@ colnames(collapsed_df)[which(colnames(collapsed_df) == 'ever_upgrade')] <- 'upgr
 colnames(collapsed_df)[which(colnames(collapsed_df) == 'upgrade_year')] <- 'upgrade_educ_year'
 colnames(collapsed_df)[which(colnames(collapsed_df) == 'date_emp')] <- 'date_employment'
 colnames(collapsed_df)[which(colnames(collapsed_df) == 'date_sep')] <- 'date_separation'
-colnames(input_df)[which(colnames(input_df) == 'cboid')] <- 'cbo94'
+
 
 # Save final output.
-fwrite(collapsed_df, file = glue('{output}/promotions_1985_to_1995_collapsed.csv'))
-fwrite(input_df, file = glue('{output}/promotions_1985_to_1995_combined.csv'))
-# Also save a dta for Prof (csv for me).
-haven::write_dta(collapsed_df, path = glue('{output}/promotions_1985_to_1995_collapsed.dta'))
+fwrite(collapsed_df, file = glue('{output}/promotions_1985_to_1995.csv'))
+# Also save a dta for Prof (csv for me)
+haven::write_dta(collapsed_df, path = glue('{output}/promotions_1985_to_1995.dta'))
 
 rm(collapsed_df)
 rm(input_df)

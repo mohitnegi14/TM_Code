@@ -1,5 +1,5 @@
 ################## 
-# MOHIT NEGI
+# MOHIT NEGI folder
 # Last Updated : 10 September 2023
 # Contact on : mohit.negi@studbocconi.it
 ################## 
@@ -18,13 +18,15 @@ options(scipen = 999)
 
 ################## PATHS
 global <- '' # This can be filled by the user of this code according to their own needs.
-data_output_folder <- glue('{global}/Box/mohit_ra/intermediate')
-raw <- glue('{global}/Box/mohit_ra/data/rais/deidentified')
+#data_output_folder <- glue('{global}/Box/mohit_ra/intermediate')
+data_output_folder <- 'C:/Users/mohit/Desktop/EP/TM/TM_Data/Output'
+# raw <- glue('{global}/Box/mohit_ra/data/rais/deidentified')
+raw <- 'C:/Users/mohit/Desktop/EP/TM/TM_Data/Raw'
 ##################
 
 ##################
 years_list <- 1985:2017
-super_large_files <- c(1999, 2008:2017)
+super_large_files <- c(2008:2017)
 
 #
 # The super large years are those whose RAIS files are larger than 20GB. 
@@ -60,6 +62,10 @@ for(year in years_list) {
     input_df <- read_dta(glue('{raw}/allstates_blind_{year}.dta'),
                          n_max = 1000000,
                          skip = batches[i])
+    
+    # Correct an inconsistency in the raw data. pis_encoded is called pis in this year.
+    if(year == 1999) { colnames(input_df)[13] <- 'pis_encoded' }
+    
     
     if(i == 1) {
       
@@ -273,8 +279,17 @@ for(year in years_list) {
   ##############################################################################  
   ## 4.
   # Redundancy table
+  
+  # Get the updated columns names and numbers.
+  # Load just the columns to determine first.
+  names_of_columns <- fread(glue('{data_output_folder}/allstates_blind_{year}_newvars.csv'),
+                            nrows = 0) %>% colnames()
+  
+  # Track number of columns too.
+  number_of_columns <- length(names_of_columns)
+  
   input_df <- fread(glue('{data_output_folder}/allstates_blind_{year}_newvars.csv'),
-                    colClasses = c(rep('character', (number_of_columns + 2))),
+                    colClasses = c(rep('character', (number_of_columns))),
                     select = c('cnpj_cei', 'establishment', 'municipality_code'))
   
   redundancy_table <- input_df[, .(unique_cnpj_cei = uniqueN(cnpj_cei, na.rm = T),
@@ -286,7 +301,7 @@ for(year in years_list) {
   colnames(redundancy_table) <- c('Unique cnpj_cei', 'Unique Establishments', 'Year')
   
   # Save to join later.
-  fwrite(redundancy_table, file = glue('{cleaned}/redundancy_table_{year}.csv'))
+  fwrite(redundancy_table, file = glue('{data_output_folder}/redundancy_table_{year}.csv'))
   
   # First check if missing municipality_code imputed correctly for the establishment variable.
   test_impute <- sample_n(input_df, 10000)
@@ -310,7 +325,7 @@ for(year in years_list) {
     
     # Now keep only the ones corresponding to cnpj that have multiple establishments.
     input_df3 <- fread(glue('{data_output_folder}/allstates_blind_{year}_newvars.csv'),
-                       colClasses = c(rep('character', (number_of_columns + 2))),
+                       colClasses = c(rep('character', (number_of_columns))),
                        nrows = 1000000,
                        skip = batches[j],
                        header = F)
@@ -319,7 +334,7 @@ for(year in years_list) {
     # and the second starts at the same.
     if(j == 1) {input_df3 <- input_df3[-1000000,]} else {input_df3 <- input_df3}
     
-    colnames(input_df3) <- c(names_of_columns, 'employer', 'establishment')
+    colnames(input_df3) <- c(names_of_columns)
     
     input_df3 <- input_df3[cnpj_cei %in% estabs_per_cnpj$cnpj_cei]
     
@@ -353,12 +368,12 @@ for(i in 1:length(years_list)) {
   year = years_list[i]
   redundancy_table <- fread(glue('{data_output_folder}/outputs/tabs/redundancy_table_{year}.csv'), colClasses = c(rep('character', 3))) %>%
     select('Year', everything()) # Make the Year column first.
-  
-  redundancy_table <- redundancy_table %>% 
+
+  redundancy_table <- redundancy_table %>%
     mutate('Slippage' = as.numeric(`Unique cnpj_cei`)/as.numeric(`Unique Establishments`))
-  
+
   colnames(redundancy_table) <- c('Year', 'Unique Firms', 'Unique Establishments', 'Slippage')
-  
+
   list_of_tables[[i]] <- redundancy_table
 
 }
