@@ -4,23 +4,50 @@
 # Contact on : mohit.negi@studbocconi.it
 ################## 
 
+################## OBJECTIVES
+# This script performs the following tasks.
+# 1. Scrape pdf files to create occupation codes crosswalk.
+##################
+
 ################## PATHS
-raw <- 'C:/Users/anjun/OneDrive/Desktop/EP/TM/TM_Data/Raw'
-cleaned <- 'C:/Users/anjun/OneDrive/Desktop/EP/TM/TM_Data/Cleaned'
-output <- 'C:/Users/anjun/OneDrive/Desktop/EP/TM/TM_Data/Output'
+harddrive <- 'D:/Mohit_Work/MOCANU/RAIS_tasks'
+box <- 'C:/Users/mohit/Box/mohit_ra'
 ##################
 
-################## LIBRARIES
-library(tidyverse)
-library(haven)
-library(pdftools)
-library(glue)
-library(stringr)
-library(stringi)
-##################
+################## PACKAGES
+# We will use these in this script.
+packages <- c('glue',
+              'tidyverse',
+              'pdftools',
+              'stringr',
+              'haven',
+              'stringi')
 
+# Installs them if not yet installed.
+installed_packages <- packages %in% rownames(installed.packages())
+if(any(installed_packages == FALSE)) { install.packages(packages[!installed_packages]) }
+
+# And load them in.
+invisible(lapply(packages, library, character.only = T))
+
+# Disable scientific notation.
+options(scipen = 999)
+
+rm(packages, installed_packages)
+
+# For faster reading.
+setDTthreads(0L)
+##################
+###############################################################################################
+
+
+
+
+
+
+###############################################################################################
 # First load in the entire pdf.
-pdf_raw <- pdf_text(glue('{raw}/pdftable.pdf'))
+pdf_raw <- pdf_text(glue('{harddrive}/intermediate/crosswalks/pdftable.pdf'))
 
 pdf_clean <- data.frame('cbo2002' = '', 'occupation' = '', 'cbo94' = '', 'ciuo88' = '')
 # Now loop scraping over the pages.
@@ -65,8 +92,8 @@ for(pagenum in 1:length(pdf_raw)) {
 pdf_clean <- pdf_clean[2:nrow(pdf_clean),]
 
 # Save as STATA crosswalk.
-write_dta(pdf_clean, glue('{cleaned}/crosswalk_cbo94_2002.dta'))
-
+write_dta(pdf_clean, glue('{harddrive}/intermediate/crosswalks/crosswalk_cbo94_2002.dta'))
+###############################################################################################
 
 
 
